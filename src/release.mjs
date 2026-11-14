@@ -137,12 +137,29 @@ async function publishRelease(action, context) {
   if (assets.error) return { status: "failed", reason: assets.error };
   const args = ["release", "create", action.tag, ...assets.assets, "--repo", action.repository, "--verify-tag"];
   if (action.generateNotes) args.push("--generate-notes");
-  return context.commandRunner("gh", args, context);
+  const created = await context.commandRunner("gh", args, context);
+  if (created.status === "passed") return created;
+
+  // A large upload can time out in the client after GitHub has already
+  // created the draft release. Recover that server-side state so a retry is
+  // idempotent instead of leaving publication permanently half-complete.
+  const existing = await context.commandRunner("gh", ["release", "view", action.tag, "--repo", action.repository, "--json", "isDraft"], context);
+  if (existing.status !== "passed") return created;
+  let isDraft = false;
+  try {
+    isDraft = JSON.parse(existing.stdout ?? "{}").isDraft === true;
+  } catch {
+    return created;
+  }
+  if (!isDraft) return created;
+  const upload = await context.commandRunner("gh", ["release", "upload", action.tag, ...assets.assets, "--repo", action.repository, "--clobber"], context);
+  if (upload.status !== "passed") return upload;
+  return context.commandRunner("gh", ["release", "edit", action.tag, "--repo", action.repository, "--draft=false"], context);
 }
 
 export async function executeReleaseAction(action, { discovery, execute = false, commandRunner = runCommand } = {}) {
   if (!execute) return { status: "planned", action };
-  const context = { cwd: discovery.projectRoot, timeoutMs: 120_000, discovery };
+  const context = { cwd: discovery.projectRoot, timeoutMs: action.timeoutMs ?? 120_000, discovery };
   if (action.kind === "git-commit") return commitChanges(action, { ...context, commandRunner });
   if (action.kind === "git-push") return pushChanges(action, { ...context, commandRunner });
   if (!action.repository) return { status: "manual_required", reason: "project_repository_required" };

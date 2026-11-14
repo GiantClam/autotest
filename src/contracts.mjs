@@ -105,6 +105,7 @@ function normalizeRelease(rawRelease = {}) {
       enabled: publish.enabled !== false,
       provider: publish.provider ?? "github",
       generateNotes: publish.generateNotes !== false,
+      timeoutMs: Number.isInteger(publish.timeoutMs) && publish.timeoutMs > 0 ? publish.timeoutMs : 30 * 60 * 1000,
       assets: Array.isArray(publish.assets) ? publish.assets.map((value) => nonEmpty(String(value), "release_publish_asset")) : [],
     }),
   });

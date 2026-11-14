@@ -74,3 +74,49 @@ test("expands generated package assets before GitHub Release upload", async () =
   assert.equal(result.status, "passed");
   assert.deepEqual(calls[0][1], ["release", "create", "v1.2.3", "dist/demo.dmg", "--repo", "owner/demo", "--verify-tag", "--generate-notes"]);
 });
+
+test("uses the publish timeout for large GitHub Release uploads", async () => {
+  let observedTimeout;
+  const result = await executeReleaseAction({
+    kind: "github-release",
+    repository: "owner/demo",
+    tag: "v1.2.3",
+    timeoutMs: 45 * 60 * 1000,
+  }, {
+    discovery: { projectRoot: "/tmp/demo" },
+    execute: true,
+    commandRunner: async (_command, _args, context) => {
+      observedTimeout = context.timeoutMs;
+      return { status: "passed" };
+    },
+  });
+  assert.equal(result.status, "passed");
+  assert.equal(observedTimeout, 45 * 60 * 1000);
+});
+
+test("recovers an existing draft after a timed-out release create", async () => {
+  const calls = [];
+  const result = await executeReleaseAction({
+    kind: "github-release",
+    repository: "owner/demo",
+    tag: "v1.2.3",
+    assets: [],
+    timeoutMs: 45 * 60 * 1000,
+  }, {
+    discovery: { projectRoot: "/tmp/demo" },
+    execute: true,
+    commandRunner: async (command, args) => {
+      calls.push([command, args]);
+      if (args[0] === "release" && args[1] === "create") return { status: "failed", exitCode: null };
+      if (args[0] === "release" && args[1] === "view") return { status: "passed", stdout: '{"isDraft":true}' };
+      return { status: "passed" };
+    },
+  });
+  assert.equal(result.status, "passed");
+  assert.deepEqual(calls.map(([, args]) => args.slice(0, 2)), [
+    ["release", "create"],
+    ["release", "view"],
+    ["release", "upload"],
+    ["release", "edit"],
+  ]);
+});
