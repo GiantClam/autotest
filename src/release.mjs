@@ -112,9 +112,17 @@ async function pushChanges(action, context) {
 
 async function mergePullRequest(action, context) {
   if (!action.headBranch || !action.baseBranch) return { status: "manual_required", reason: "branch_context_required" };
-  const lookup = await context.commandRunner("gh", ["pr", "list", "--repo", action.repository, "--head", action.headBranch, "--base", action.baseBranch, "--state", "open", "--json", "number", "--jq", ".[].number"], context);
+  const lookupArgs = ["pr", "list", "--repo", action.repository, "--head", action.headBranch, "--base", action.baseBranch, "--state", "open", "--json", "number", "--jq", ".[].number"];
+  const lookup = await context.commandRunner("gh", lookupArgs, context);
   if (lookup.status !== "passed") return lookup;
-  const pullRequests = lookup.stdout.split(/\s+/u).map((value) => value.trim()).filter(Boolean);
+  let pullRequests = lookup.stdout.split(/\s+/u).map((value) => value.trim()).filter(Boolean);
+  if (pullRequests.length === 0 && action.createIfMissing !== false) {
+    const create = await context.commandRunner("gh", ["pr", "create", "--repo", action.repository, "--head", action.headBranch, "--base", action.baseBranch, "--fill"], context);
+    if (create.status !== "passed") return create;
+    const afterCreate = await context.commandRunner("gh", lookupArgs, context);
+    if (afterCreate.status !== "passed") return afterCreate;
+    pullRequests = afterCreate.stdout.split(/\s+/u).map((value) => value.trim()).filter(Boolean);
+  }
   if (pullRequests.length !== 1) return { status: "manual_required", reason: pullRequests.length === 0 ? "open_pull_request_not_found" : "multiple_open_pull_requests_found", candidates: pullRequests };
   return context.commandRunner("gh", mergeArgs(action, pullRequests[0]), context);
 }

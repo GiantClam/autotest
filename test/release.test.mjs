@@ -17,6 +17,29 @@ test("merges the single open PR for the discovered project branch", async () => 
   assert.deepEqual(calls[1][1], ["pr", "merge", "42", "--repo", "owner/demo", "--squash", "--delete-branch"]);
 });
 
+test("creates the project PR after push when no open PR exists", async () => {
+  const calls = [];
+  let lookupCount = 0;
+  const commandRunner = async (command, args) => {
+    calls.push([command, args]);
+    if (args[0] === "pr" && args[1] === "list") {
+      lookupCount += 1;
+      return { status: "passed", stdout: lookupCount === 1 ? "" : "42\n" };
+    }
+    return { status: "passed", stdout: "https://github.com/owner/demo/pull/42\n" };
+  };
+  const result = await executeReleaseAction({ kind: "github-pr-merge", repository: "owner/demo", headBranch: "codex/demo", baseBranch: "main", strategy: "squash", deleteBranch: true, createIfMissing: true }, { discovery: { projectRoot: "/tmp/demo" }, execute: true, commandRunner });
+  assert.equal(result.status, "passed");
+  assert.deepEqual(calls.map(([, args]) => args.slice(0, 2)), [
+    ["pr", "list"],
+    ["pr", "create"],
+    ["pr", "list"],
+    ["pr", "merge"],
+  ]);
+  assert.deepEqual(calls[1][1], ["pr", "create", "--repo", "owner/demo", "--head", "codex/demo", "--base", "main", "--fill"]);
+  assert.deepEqual(calls[3][1], ["pr", "merge", "42", "--repo", "owner/demo", "--squash", "--delete-branch"]);
+});
+
 test("commits only configured paths and pushes the current feature branch", async () => {
   const calls = [];
   const commandRunner = async (command, args) => {

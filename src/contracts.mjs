@@ -94,6 +94,7 @@ function normalizeRelease(rawRelease = {}) {
       enabled: merge.enabled !== false,
       strategy: merge.strategy ?? "squash",
       deleteBranch: merge.deleteBranch !== false,
+      createIfMissing: merge.createIfMissing !== false,
     }),
     tag: Object.freeze({
       enabled: tag.enabled !== false,

@@ -17,6 +17,7 @@ test("normalizes the complete implementation and release contract", () => {
   assert.equal(definition.project.root, "/tmp/demo");
   assert.equal(definition.methods.verify[0].kind, "command");
   assert.equal(definition.release.merge.enabled, true);
+  assert.equal(definition.release.merge.createIfMissing, true);
   assert.equal(definition.release.tag.prefix, "v");
   assert.equal(definition.release.publish.provider, "github");
   assert.equal(definition.release.publish.timeoutMs, 30 * 60 * 1000);
