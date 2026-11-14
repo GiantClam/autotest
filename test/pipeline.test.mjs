@@ -53,3 +53,21 @@ test("executes project methods before release actions", async () => {
   assert.equal(result.status, "passed");
   assert.deepEqual(calls, ["implementation-1", "verify-1", "build-1", "package-1", "commit", "push", "merge", "tag", "publish", "smoke-1"]);
 });
+
+test("refreshes the project version after implementation before tagging", async () => {
+  const calls = [];
+  const result = await executePipeline(definition, { ...discovery, projectRoot: process.cwd(), version: "0.1.3" }, {
+    execute: true,
+    methodExecutor: async (method) => {
+      calls.push(method.id);
+      return { status: "passed" };
+    },
+    releaseExecutor: async (action) => {
+      calls.push(action.stage);
+      return { status: "passed", tag: action.tag };
+    },
+  });
+  assert.equal(result.status, "passed");
+  const tagResult = result.results.find((stage) => stage.id === "tag").result;
+  assert.equal(tagResult.tag, "v0.1.2");
+});
