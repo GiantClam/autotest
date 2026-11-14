@@ -2,11 +2,11 @@
 
 `autotest` is the project-independent orchestration layer for the complete engineering loop:
 
-`discover → implementation → verify → build → package → merge → tag → publish → smoke`
+`discover → implementation → verify → build → package → commit → push → merge → tag → publish → smoke`
 
 The implementation, verification, build, package, and smoke steps call methods exposed by the target project. `autotest` discovers package scripts and GitHub workflows, but it does not copy a project's commands into its own source. Each project can provide an `autotest` definition based on [examples/project.autotest.json](examples/project.autotest.json).
 
-The release steps are generic GitHub operations. They run only after all required project methods pass, and the mutating path requires `run --execute`; `plan` is the default mode. The package method remains project-owned, while `release.publish.assets` tells the generic GitHub Release step which generated installers or archives to upload. A missing project method, version, repository, or smoke check stops the pipeline with `blocked` instead of silently skipping a stage.
+The commit and push steps are generic Git operations. They stage only the configured paths, push the current non-default branch, and then let the release steps locate and merge the single open PR. The release steps run only after all required project methods pass, and the mutating path requires `run --execute`; `plan` is the default mode. The package method remains project-owned, while `release.publish.assets` tells the generic GitHub Release step which generated installers or archives to upload. A missing project method, version, repository, PR, or smoke check stops the pipeline with `blocked` instead of silently skipping a stage.
 
 ## Commands
 
