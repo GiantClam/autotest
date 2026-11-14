@@ -93,6 +93,23 @@ function mergeArgs(action, pullRequest) {
   return args;
 }
 
+async function commitChanges(action, context) {
+  const status = await context.commandRunner("git", ["status", "--porcelain", "--untracked-files=all"], context);
+  if (status.status !== "passed") return status;
+  if (!status.stdout.trim()) return { status: "passed", reason: "no_changes_to_commit" };
+  if (!Array.isArray(action.paths) || action.paths.length === 0) return { status: "manual_required", reason: "commit_paths_required_for_uncommitted_changes" };
+  const add = await context.commandRunner("git", ["add", "--", ...action.paths], context);
+  if (add.status !== "passed") return add;
+  const staged = await context.commandRunner("git", ["diff", "--cached", "--name-only"], context);
+  if (staged.status !== "passed" || !staged.stdout.trim()) return { status: "manual_required", reason: "commit_paths_did_not_stage_changes" };
+  return context.commandRunner("git", ["commit", "-m", action.message], context);
+}
+
+async function pushChanges(action, context) {
+  if (!action.branch || action.branch === action.baseBranch) return { status: "manual_required", reason: "push_requires_non_default_branch" };
+  return context.commandRunner("git", ["push", action.remote, action.branch], context);
+}
+
 async function mergePullRequest(action, context) {
   if (!action.headBranch || !action.baseBranch) return { status: "manual_required", reason: "branch_context_required" };
   const lookup = await context.commandRunner("gh", ["pr", "list", "--repo", action.repository, "--head", action.headBranch, "--base", action.baseBranch, "--state", "open", "--json", "number", "--jq", ".[].number"], context);
@@ -124,9 +141,11 @@ async function publishRelease(action, context) {
 }
 
 export async function executeReleaseAction(action, { discovery, execute = false, commandRunner = runCommand } = {}) {
-  if (!action.repository) return { status: "manual_required", reason: "project_repository_required" };
   if (!execute) return { status: "planned", action };
   const context = { cwd: discovery.projectRoot, timeoutMs: 120_000, discovery };
+  if (action.kind === "git-commit") return commitChanges(action, { ...context, commandRunner });
+  if (action.kind === "git-push") return pushChanges(action, { ...context, commandRunner });
+  if (!action.repository) return { status: "manual_required", reason: "project_repository_required" };
   if (action.kind === "github-pr-merge") return mergePullRequest(action, { ...context, commandRunner });
   if (action.kind === "git-tag") return createTag(action, { ...context, commandRunner });
   if (action.kind === "github-release") return publishRelease(action, { ...context, commandRunner });

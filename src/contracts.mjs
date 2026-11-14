@@ -6,6 +6,8 @@ export const PIPELINE_STAGES = Object.freeze([
   "verify",
   "build",
   "package",
+  "commit",
+  "push",
   "merge",
   "tag",
   "publish",
@@ -71,12 +73,23 @@ function normalizeMethods(rawMethods = {}) {
 function normalizeRelease(rawRelease = {}) {
   if (!rawRelease || typeof rawRelease !== "object" || Array.isArray(rawRelease)) fail("release_invalid");
   const merge = rawRelease.merge ?? {};
+  const commit = rawRelease.commit ?? {};
+  const push = rawRelease.push ?? {};
   const tag = rawRelease.tag ?? {};
   const publish = rawRelease.publish ?? {};
-  if ([merge, tag, publish].some((value) => !value || typeof value !== "object" || Array.isArray(value))) fail("release_step_invalid");
+  if ([commit, push, merge, tag, publish].some((value) => !value || typeof value !== "object" || Array.isArray(value))) fail("release_step_invalid");
   const versionSource = tag.versionSource ?? "project";
   if (!new Set(["project", "explicit"]).has(versionSource)) fail("release_tag_version_source_unsupported");
   return Object.freeze({
+    commit: Object.freeze({
+      enabled: commit.enabled !== false,
+      message: commit.message ?? "chore: autotest pipeline commit",
+      paths: Array.isArray(commit.paths) ? commit.paths.map((value) => nonEmpty(String(value), "release_commit_path")) : [],
+    }),
+    push: Object.freeze({
+      enabled: push.enabled !== false,
+      remote: push.remote ?? "origin",
+    }),
     merge: Object.freeze({
       enabled: merge.enabled !== false,
       strategy: merge.strategy ?? "squash",

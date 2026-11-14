@@ -23,7 +23,7 @@ async function loadDefinition(path) {
 async function main(argv) {
   const [command, ...args] = argv;
   if (command === "check") {
-    console.log(JSON.stringify({ status: "passed", stages: ["implementation", "verify", "build", "package", "merge", "tag", "publish", "smoke"] }, null, 2));
+    console.log(JSON.stringify({ status: "passed", stages: ["implementation", "verify", "build", "package", "commit", "push", "merge", "tag", "publish", "smoke"] }, null, 2));
     return;
   }
   if (command === "discover") {

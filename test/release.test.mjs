@@ -17,6 +17,27 @@ test("merges the single open PR for the discovered project branch", async () => 
   assert.deepEqual(calls[1][1], ["pr", "merge", "42", "--repo", "owner/demo", "--squash", "--delete-branch"]);
 });
 
+test("commits only configured paths and pushes the current feature branch", async () => {
+  const calls = [];
+  const commandRunner = async (command, args) => {
+    calls.push([command, args]);
+    if (args[0] === "status") return { status: "passed", stdout: " M package.json\n" };
+    if (args[0] === "diff") return { status: "passed", stdout: "package.json\n" };
+    return { status: "passed", stdout: "" };
+  };
+  const commit = await executeReleaseAction({ kind: "git-commit", message: "chore: prepare release", paths: ["package.json"] }, { discovery: { projectRoot: "/tmp/demo" }, execute: true, commandRunner });
+  const push = await executeReleaseAction({ kind: "git-push", remote: "origin", branch: "codex/demo", baseBranch: "main" }, { discovery: { projectRoot: "/tmp/demo" }, execute: true, commandRunner });
+  assert.equal(commit.status, "passed");
+  assert.equal(push.status, "passed");
+  assert.deepEqual(calls.slice(0, 4).map(([command, args]) => [command, args]), [
+    ["git", ["status", "--porcelain", "--untracked-files=all"]],
+    ["git", ["add", "--", "package.json"]],
+    ["git", ["diff", "--cached", "--name-only"]],
+    ["git", ["commit", "-m", "chore: prepare release"]],
+  ]);
+  assert.deepEqual(calls[4][1], ["push", "origin", "codex/demo"]);
+});
+
 test("tags the merged base branch and publishes the verified tag", async () => {
   const calls = [];
   const commandRunner = async (command, args) => {

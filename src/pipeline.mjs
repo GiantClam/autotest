@@ -5,7 +5,7 @@ import { executeReleaseAction } from "./release.mjs";
 const PRE_RELEASE_PROJECT_STAGES = ["implementation", "verify", "build", "package"];
 const POST_RELEASE_PROJECT_STAGES = ["smoke"];
 const PROJECT_STAGES = [...PRE_RELEASE_PROJECT_STAGES, ...POST_RELEASE_PROJECT_STAGES];
-const RELEASE_STAGES = ["merge", "tag", "publish"];
+const RELEASE_STAGES = ["commit", "push", "merge", "tag", "publish"];
 
 function stageRecord(id, status, extra = {}) {
   return { id, status, ...extra };
@@ -22,6 +22,8 @@ function tagFor(definition, discovery) {
 
 function releaseActions(definition, discovery) {
   const actions = [];
+  if (definition.release.commit.enabled) actions.push({ stage: "commit", kind: "git-commit", message: definition.release.commit.message, paths: definition.release.commit.paths });
+  if (definition.release.push.enabled) actions.push({ stage: "push", kind: "git-push", remote: definition.release.push.remote, branch: discovery.branch, baseBranch: definition.project.defaultBranch });
   if (definition.release.merge.enabled) actions.push({ stage: "merge", kind: "github-pr-merge", repository: definition.project.repository, baseBranch: definition.project.defaultBranch, headBranch: discovery.branch, strategy: definition.release.merge.strategy, deleteBranch: definition.release.merge.deleteBranch });
   if (definition.release.tag.enabled) actions.push({ stage: "tag", kind: "git-tag", repository: definition.project.repository, baseBranch: definition.project.defaultBranch, tag: tagFor(definition, discovery) });
   if (definition.release.publish.enabled) actions.push({ stage: "publish", kind: "github-release", repository: definition.project.repository, tag: tagFor(definition, discovery), generateNotes: definition.release.publish.generateNotes, assets: definition.release.publish.assets });
@@ -39,7 +41,7 @@ export function createPipelinePlan(rawDefinition, discovery) {
     }));
   }
   for (const action of releaseActions(definition, discovery)) {
-    const missing = action.kind === "git-tag" && !action.tag;
+    const missing = (action.kind === "git-tag" && !action.tag) || (action.kind === "git-push" && !action.branch) || (action.kind === "github-pr-merge" && (!action.headBranch || action.headBranch === action.baseBranch));
     stages.push(stageRecord(action.stage, missing ? "manual_required" : "ready", { action }));
   }
   for (const stage of POST_RELEASE_PROJECT_STAGES) {
@@ -53,7 +55,7 @@ export function createPipelinePlan(rawDefinition, discovery) {
 }
 
 async function runReleaseAction(action, { discovery, execute, releaseExecutor }) {
-  if (!action.repository) return { status: "manual_required", reason: "project_repository_required" };
+  if (["github-pr-merge", "github-release"].includes(action.kind) && !action.repository) return { status: "manual_required", reason: "project_repository_required" };
   if (!execute) return { status: "planned", action };
   return releaseExecutor(action, { discovery, execute });
 }

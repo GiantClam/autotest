@@ -38,6 +38,18 @@
     ]
   },
   "release": {
+    "commit": {
+      "enabled": true,
+      "message": "chore: prepare project release",
+      "paths": [
+        "src/**",
+        "package.json"
+      ]
+    },
+    "push": {
+      "enabled": true,
+      "remote": "origin"
+    },
     "merge": {
       "enabled": true,
       "strategy": "squash",
