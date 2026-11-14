@@ -24,9 +24,9 @@ const definition = {
   }
 };
 
-test("plans implementation, project methods, merge, tag, publish, and smoke in order", () => {
+test("plans smoke before merge, tag, and publish", () => {
   const plan = createPipelinePlan(definition, discovery);
-  assert.deepEqual(plan.stages.map((stage) => stage.id), ["discover", "implementation", "verify", "build", "package", "commit", "push", "merge", "tag", "publish", "smoke"]);
+  assert.deepEqual(plan.stages.map((stage) => stage.id), ["discover", "implementation", "verify", "build", "package", "smoke", "commit", "push", "merge", "tag", "publish"]);
   assert.equal(plan.stages.find((stage) => stage.id === "tag").action.tag, "v1.2.3");
 });
 
@@ -39,7 +39,7 @@ test("stops before release when implementation is incomplete", async () => {
 test("plan mode reports every stage without executing or stopping", async () => {
   const result = await executePipeline({ ...definition, methods: { ...definition.methods, implementation: { kind: "manual", completed: false } } }, discovery, { execute: false });
   assert.equal(result.status, "planned");
-  assert.deepEqual(result.results.map((stage) => stage.id), ["discover", "implementation", "verify", "build", "package", "commit", "push", "merge", "tag", "publish", "smoke"]);
+  assert.deepEqual(result.results.map((stage) => stage.id), ["discover", "implementation", "verify", "build", "package", "smoke", "commit", "push", "merge", "tag", "publish"]);
   assert.equal(result.results.find((stage) => stage.id === "implementation").status, "ready");
 });
 
@@ -51,7 +51,7 @@ test("executes project methods before release actions", async () => {
     releaseExecutor: async (action) => { calls.push(action.stage); return { status: "passed" }; },
   });
   assert.equal(result.status, "passed");
-  assert.deepEqual(calls, ["implementation-1", "verify-1", "build-1", "package-1", "commit", "push", "merge", "tag", "publish", "smoke-1"]);
+  assert.deepEqual(calls, ["implementation-1", "verify-1", "build-1", "package-1", "smoke-1", "commit", "push", "merge", "tag", "publish"]);
 });
 
 test("refreshes the project version after implementation before tagging", async () => {

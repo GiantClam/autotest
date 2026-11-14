@@ -3,8 +3,8 @@ import { discoverProject } from "./discovery.mjs";
 import { executeProjectMethod } from "./method-runner.mjs";
 import { executeReleaseAction } from "./release.mjs";
 
-const PRE_RELEASE_PROJECT_STAGES = ["implementation", "verify", "build", "package"];
-const POST_RELEASE_PROJECT_STAGES = ["smoke"];
+const PRE_RELEASE_PROJECT_STAGES = ["implementation", "verify", "build", "package", "smoke"];
+const POST_RELEASE_PROJECT_STAGES = [];
 const PROJECT_STAGES = [...PRE_RELEASE_PROJECT_STAGES, ...POST_RELEASE_PROJECT_STAGES];
 const RELEASE_STAGES = ["commit", "push", "merge", "tag", "publish"];
 
