@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "project": {
+    "id": "replace-with-project-id",
+    "root": ".",
+    "repository": "OWNER/REPOSITORY",
+    "defaultBranch": "main"
+  },
+  "methods": {
+    "implementation": {
+      "kind": "manual",
+      "id": "agent-implementation",
+      "completed": false
+    },
+    "verify": [
+      {
+        "kind": "package-script",
+        "script": "test"
+      }
+    ],
+    "build": [
+      {
+        "kind": "package-script",
+        "script": "build"
+      }
+    ],
+    "package": [
+      {
+        "kind": "package-script",
+        "script": "package"
+      }
+    ],
+    "smoke": [
+      {
+        "kind": "workflow",
+        "workflow": "deployed-regression.yml"
+      }
+    ]
+  },
+  "release": {
+    "merge": {
+      "enabled": true,
+      "strategy": "squash",
+      "deleteBranch": true
+    },
+    "tag": {
+      "enabled": true,
+      "prefix": "v",
+      "versionSource": "project"
+    },
+    "publish": {
+      "enabled": true,
+      "provider": "github",
+      "generateNotes": true,
+      "assets": [
+        "dist/*.dmg",
+        "dist/*.zip"
+      ]
+    }
+  }
+}
