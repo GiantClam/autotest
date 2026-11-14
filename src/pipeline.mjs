@@ -1,4 +1,5 @@
 import { normalizeProjectDefinition } from "./contracts.mjs";
+import { discoverProject } from "./discovery.mjs";
 import { executeProjectMethod } from "./method-runner.mjs";
 import { executeReleaseAction } from "./release.mjs";
 
@@ -25,8 +26,8 @@ function releaseActions(definition, discovery) {
   if (definition.release.commit.enabled) actions.push({ stage: "commit", kind: "git-commit", message: definition.release.commit.message, paths: definition.release.commit.paths });
   if (definition.release.push.enabled) actions.push({ stage: "push", kind: "git-push", remote: definition.release.push.remote, branch: discovery.branch, baseBranch: definition.project.defaultBranch });
   if (definition.release.merge.enabled) actions.push({ stage: "merge", kind: "github-pr-merge", repository: definition.project.repository, baseBranch: definition.project.defaultBranch, headBranch: discovery.branch, strategy: definition.release.merge.strategy, deleteBranch: definition.release.merge.deleteBranch });
-  if (definition.release.tag.enabled) actions.push({ stage: "tag", kind: "git-tag", repository: definition.project.repository, baseBranch: definition.project.defaultBranch, tag: tagFor(definition, discovery) });
-  if (definition.release.publish.enabled) actions.push({ stage: "publish", kind: "github-release", repository: definition.project.repository, tag: tagFor(definition, discovery), generateNotes: definition.release.publish.generateNotes, assets: definition.release.publish.assets });
+  if (definition.release.tag.enabled) actions.push({ stage: "tag", kind: "git-tag", repository: definition.project.repository, baseBranch: definition.project.defaultBranch, tag: tagFor(definition, discovery), versionSource: definition.release.tag.versionSource });
+  if (definition.release.publish.enabled) actions.push({ stage: "publish", kind: "github-release", repository: definition.project.repository, tag: tagFor(definition, discovery), versionSource: definition.release.tag.versionSource, generateNotes: definition.release.publish.generateNotes, assets: definition.release.publish.assets });
   return actions;
 }
 
@@ -93,8 +94,13 @@ export async function executePipeline(rawDefinition, discovery, { execute = fals
       results.push({ ...stage, status: execute ? "passed" : "planned", methodResults });
       continue;
     }
-    const result = await runReleaseAction(stage.action, { discovery, execute, releaseExecutor });
-    results.push({ ...stage, status: result.status, result });
+    let action = stage.action;
+    if (action && ["git-tag", "github-release"].includes(action.kind) && action.versionSource === "project") {
+      const refreshed = await discoverProject(discovery.projectRoot);
+      action = { ...action, tag: tagFor(plan.definition, refreshed) };
+    }
+    const result = await runReleaseAction(action, { discovery, execute, releaseExecutor });
+    results.push({ ...stage, action, status: result.status, result });
     if (!['passed', 'planned'].includes(result.status)) return { status: result.status === "manual_required" ? "blocked" : "failed", stoppedAt: stage.id, results, plan };
   }
   return { status: execute ? "passed" : "planned", results, plan };
