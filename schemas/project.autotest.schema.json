@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/GiantClam/autotest/project.autotest.schema.json",
+  "type": "object",
+  "required": ["schemaVersion", "project", "methods", "release"],
+  "properties": {
+    "schemaVersion": { "type": "integer", "enum": [1, 2] },
+    "project": { "type": "object", "required": ["id", "root", "defaultBranch"], "additionalProperties": true },
+    "required": { "type": "object", "additionalProperties": { "type": "boolean" } },
+    "methods": { "type": "object", "additionalProperties": true },
+    "release": { "type": "object", "additionalProperties": true },
+    "lifecycle": { "type": "object", "additionalProperties": true },
+    "environment": { "type": "object", "additionalProperties": true }
+  },
+  "additionalProperties": false
+}

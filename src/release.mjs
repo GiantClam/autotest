@@ -2,6 +2,8 @@ import { execFile } from "node:child_process";
 import { lstat, readdir } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { promisify } from "node:util";
+import { verifyPullRequestChecks } from "./github.mjs";
+import { verifyReleaseArtifacts } from "./release-verifier.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -124,7 +126,21 @@ async function mergePullRequest(action, context) {
     pullRequests = afterCreate.stdout.split(/\s+/u).map((value) => value.trim()).filter(Boolean);
   }
   if (pullRequests.length !== 1) return { status: "manual_required", reason: pullRequests.length === 0 ? "open_pull_request_not_found" : "multiple_open_pull_requests_found", candidates: pullRequests };
-  return context.commandRunner("gh", mergeArgs(action, pullRequests[0]), context);
+  if (action.requiredChecks?.length || action.expectedHeadSha) {
+    const checks = await verifyPullRequestChecks({ repository: action.repository, pullRequest: pullRequests[0], expectedHeadSha: action.expectedHeadSha, requiredChecks: action.requiredChecks ?? [], commandRunner: context.commandRunner });
+    if (checks.status !== "passed") return checks;
+  }
+  const merged = await context.commandRunner("gh", mergeArgs(action, pullRequests[0]), context);
+  if (merged.status !== "passed") return merged;
+  if (!action.captureMergeSha) return merged;
+  const viewed = await context.commandRunner("gh", ["pr", "view", pullRequests[0], "--repo", action.repository, "--json", "mergeCommit"], context);
+  if (viewed.status !== "passed") return viewed;
+  try {
+    const mergeCommitSha = JSON.parse(viewed.stdout ?? "{}").mergeCommit?.oid;
+    return mergeCommitSha ? { ...merged, mergeCommitSha } : { ...merged, status: "blocked", reason: "merge_commit_sha_missing" };
+  } catch {
+    return { ...merged, status: "blocked", reason: "merge_commit_payload_invalid" };
+  }
 }
 
 async function createTag(action, context) {
@@ -134,7 +150,13 @@ async function createTag(action, context) {
   const existing = await context.commandRunner("git", ["show-ref", "--verify", "--quiet", `refs/tags/${action.tag}`], context);
   if (existing.status === "passed") return { status: "failed", reason: "release_tag_already_exists", tag: action.tag };
   if (existing.exitCode !== 1) return existing;
-  const tagResult = await context.commandRunner("git", ["tag", "-a", action.tag, `origin/${action.baseBranch}`, "-m", `Release ${action.tag}`], context);
+  if (action.strictRelease) {
+    const remoteExisting = await context.commandRunner("git", ["ls-remote", "--tags", action.remote ?? "origin", `refs/tags/${action.tag}`], context);
+    if (remoteExisting.status === "passed" && remoteExisting.stdout.trim()) return { status: "blocked", reason: "remote_release_tag_already_exists", tag: action.tag };
+    if (remoteExisting.status !== "passed") return remoteExisting;
+  }
+  const target = action.targetSha ?? `origin/${action.baseBranch}`;
+  const tagResult = await context.commandRunner("git", ["tag", "-a", action.tag, target, "-m", `Release ${action.tag}`], context);
   if (tagResult.status !== "passed") return tagResult;
   return context.commandRunner("git", ["push", "origin", action.tag], context);
 }
@@ -143,6 +165,20 @@ async function publishRelease(action, context) {
   if (!action.tag) return { status: "manual_required", reason: "release_tag_required" };
   const assets = await expandAssets(context.cwd, action.assets ?? []);
   if (assets.error) return { status: "failed", reason: assets.error };
+  const required = await expandAssets(context.cwd, action.requiredArtifacts ?? []);
+  if (required.error) return { status: "blocked", reason: `required_artifact_missing:${required.error}` };
+  if (Object.keys(action.artifactChecksums ?? {}).length > 0 || (action.signaturePaths ?? []).length > 0 || (action.notarizationEvidence ?? []).length > 0 || action.metadataPath) {
+    const verified = await verifyReleaseArtifacts({ projectRoot: context.cwd, artifactChecksums: action.artifactChecksums, signaturePaths: action.signaturePaths, notarizationEvidence: action.notarizationEvidence, metadataPath: action.metadataPath });
+    if (verified.status !== "passed") return verified;
+  }
+  if (action.strictRelease) {
+    const existing = await context.commandRunner("gh", ["release", "view", action.tag, "--repo", action.repository, "--json", "isDraft"], context);
+    if (existing.status === "passed") {
+      let draft = false;
+      try { draft = JSON.parse(existing.stdout ?? "{}").isDraft === true; } catch { return { status: "blocked", reason: "existing_release_payload_invalid" }; }
+      if (!draft) return { status: "blocked", reason: "release_already_exists", tag: action.tag };
+    }
+  }
   const args = ["release", "create", action.tag, ...assets.assets, "--repo", action.repository, "--verify-tag"];
   if (action.generateNotes) args.push("--generate-notes");
   const created = await context.commandRunner("gh", args, context);

@@ -143,3 +143,25 @@ test("recovers an existing draft after a timed-out release create", async () => 
     ["release", "edit"],
   ]);
 });
+
+test("verifies required checks and records the exact merge commit SHA", async () => {
+  const commandRunner = async (_command, args) => {
+    if (args[0] === "pr" && args[1] === "list") return { status: "passed", stdout: "42\n" };
+    if (args[0] === "pr" && args[1] === "view" && args.some((arg) => arg.includes("statusCheckRollup"))) return { status: "passed", stdout: JSON.stringify({ headRefOid: "head-sha", statusCheckRollup: [{ name: "unit", conclusion: "SUCCESS" }] }) };
+    if (args[0] === "pr" && args[1] === "view") return { status: "passed", stdout: JSON.stringify({ mergeCommit: { oid: "merge-sha" } }) };
+    return { status: "passed", stdout: "" };
+  };
+  const result = await executeReleaseAction({ kind: "github-pr-merge", repository: "owner/demo", headBranch: "codex/demo", baseBranch: "main", expectedHeadSha: "head-sha", requiredChecks: ["unit"], captureMergeSha: true }, { discovery: { projectRoot: "/tmp/demo" }, execute: true, commandRunner });
+  assert.equal(result.status, "passed");
+  assert.equal(result.mergeCommitSha, "merge-sha");
+});
+
+test("fails closed on an existing remote tag in strict release mode", async () => {
+  const result = await executeReleaseAction({ kind: "git-tag", repository: "owner/demo", baseBranch: "main", tag: "v1.2.3", strictRelease: true }, { discovery: { projectRoot: "/tmp/demo" }, execute: true, commandRunner: async (_command, args) => {
+    if (args[0] === "show-ref") return { status: "failed", exitCode: 1, stdout: "" };
+    if (args[0] === "ls-remote") return { status: "passed", stdout: "abc\trefs/tags/v1.2.3\n" };
+    return { status: "passed", stdout: "" };
+  } });
+  assert.equal(result.status, "blocked");
+  assert.equal(result.reason, "remote_release_tag_already_exists");
+});

@@ -21,3 +21,7 @@ jobs:
         run: npm test
       - name: Verify CLI contract
         run: npm run check
+      - name: Verify JSON Schemas
+        run: npm run schema:check
+      - name: Verify fixture discovery and plugin registration
+        run: node --test test/fixtures.test.mjs test/plugin.test.mjs

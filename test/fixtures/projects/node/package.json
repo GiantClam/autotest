@@ -1,0 +1,1 @@
+{"name":"fixture-node","version":"1.0.0","scripts":{"test":"node -e \"process.exit(0)\"","build":"node -e \"process.exit(0)\"","package":"node -e \"process.exit(0)\""}}

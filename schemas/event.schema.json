@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/GiantClam/autotest/event.schema.json",
+  "type": "object",
+  "required": ["eventId", "stage", "status", "timestamp"],
+  "properties": {
+    "eventId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,80}$" },
+    "stage": { "type": "string", "minLength": 1 },
+    "status": { "type": "string", "enum": ["passed", "failed", "blocked", "needs_human", "planned", "skipped"] },
+    "timestamp": { "type": "string" },
+    "actor": { "type": "object" },
+    "inputArtifacts": { "type": "array" },
+    "outputArtifacts": { "type": "array" },
+    "error": { "type": "string" }
+  },
+  "additionalProperties": true
+}

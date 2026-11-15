@@ -30,3 +30,17 @@ test("rejects a project method that has no executable target", () => {
     methods: { verify: { kind: "package-script" } }
   }), /project_contract_invalid:verify_method_0_script_required/);
 });
+
+test("accepts v2 metadata while keeping v1 definitions readable", () => {
+  const definition = normalizeProjectDefinition({
+    schemaVersion: 2,
+    project: { id: "demo", root: ".", defaultBranch: "main" },
+    lifecycle: { workItemId: "WI-1" },
+    environment: { runtime: "node" },
+    methods: { verify: { kind: "command", command: process.execPath, args: [], envRefs: ["CI"] } },
+    release: {},
+  }, { projectRoot: "/tmp/demo" });
+  assert.equal(definition.schemaVersion, 2);
+  assert.equal(definition.lifecycle.workItemId, "WI-1");
+  assert.deepEqual(definition.methods.verify[0].envRefs, ["CI"]);
+});

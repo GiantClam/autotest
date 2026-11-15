@@ -1,0 +1,16 @@
+{
+  "name": "@giantclam/dsh-autotest",
+  "version": "0.1.0",
+  "description": "DeepSeek Harness tools for the generic autotest project lifecycle",
+  "private": true,
+  "type": "module",
+  "main": "src/index.mjs",
+  "exports": {
+    ".": "./src/index.mjs",
+    "./cordis.patch.yml": "./cordis.patch.yml"
+  },
+  "files": ["src", "cordis.patch.yml", "README.md", "package.json"],
+  "engines": {
+    "node": ">=20"
+  }
+}

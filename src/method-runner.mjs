@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { runPlaywrightMethod } from "./browser.mjs";
 
 function redact(value) {
   return String(value)
@@ -41,16 +42,20 @@ function runProcess({ command, args, cwd, env, timeoutMs }) {
     }, timeoutMs);
     child.once("error", (error) => {
       clearTimeout(timer);
-      resolve({ status: "failed", exitCode: null, error: redact(error.message), stdout: redact(stdout), stderr: redact(stderr) });
+      resolve({ status: "failed", classification: "environment", exitCode: null, error: redact(error.message), stdout: redact(stdout), stderr: redact(stderr) });
     });
     child.once("close", (exitCode, signal) => {
       clearTimeout(timer);
-      resolve({ status: exitCode === 0 ? "passed" : "failed", exitCode, signal, stdout: redact(stdout), stderr: redact(stderr) });
+      resolve({ status: exitCode === 0 ? "passed" : "failed", ...(exitCode === 0 ? {} : { classification: "test-script" }), exitCode, signal, stdout: redact(stdout), stderr: redact(stderr) });
     });
   });
 }
 
-export async function executeProjectMethod(method, { discovery, execute = false } = {}) {
+export async function executeProjectMethod(method, { discovery, execute = false, playwrightRunner } = {}) {
+  if (method.kind === "playwright") {
+    if (!execute) return { status: "planned", plan: { assertions: method.assertions ?? [], evidence: method.evidence ?? [] } };
+    return runPlaywrightMethod({ runner: playwrightRunner, assertions: method.assertions ?? [], evidence: method.evidence ?? [] });
+  }
   if (method.kind === "manual") {
     return method.completed
       ? { status: "passed", evidence: method.evidence ?? null }
@@ -66,5 +71,22 @@ export async function executeProjectMethod(method, { discovery, execute = false 
     env: { ...process.env, ...(method.env ?? {}) },
     timeoutMs: method.timeoutMs,
   });
+  if (method.kind === "workflow" && method.waitForCompletion && result.status === "passed") {
+    const runId = result.stdout.match(/\/runs\/(\d+)/u)?.[1];
+    if (!runId) return { status: "blocked", classification: "dependency/provider", reason: "workflow_run_id_missing", plan };
+    const deadline = Date.now() + method.workflowTimeoutMs;
+    while (Date.now() <= deadline) {
+      const observed = await runProcess({ command: "gh", args: ["run", "view", runId, "--json", "status,conclusion,headSha"], cwd: discovery.projectRoot, env: process.env, timeoutMs: Math.min(method.timeoutMs, 120_000) });
+      if (observed.status !== "passed") return { ...observed, classification: "dependency/provider", plan };
+      try {
+        const payload = JSON.parse(observed.stdout);
+        if (payload.status === "completed") return payload.conclusion === "success" ? { ...result, workflowRun: payload, plan } : { status: "failed", classification: "dependency/provider", reason: "workflow_failed", workflowRun: payload, plan };
+      } catch {
+        return { status: "failed", classification: "dependency/provider", reason: "workflow_payload_invalid", plan };
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+    return { status: "blocked", classification: "dependency/provider", reason: "workflow_timeout", plan };
+  }
   return { ...result, plan };
 }

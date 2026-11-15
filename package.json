@@ -9,6 +9,7 @@
   "scripts": {
     "test": "node --test test/**/*.test.mjs",
     "check": "node src/cli.mjs check",
+    "schema:check": "node src/validate-schemas.mjs",
     "discover": "node src/cli.mjs discover",
     "plan": "node src/cli.mjs plan",
     "run": "node src/cli.mjs run"
