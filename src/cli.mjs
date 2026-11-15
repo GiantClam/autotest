@@ -7,6 +7,8 @@ import { doctorProject } from "./doctor.mjs";
 import { createDeliveryCase } from "./delivery-case.mjs";
 import { verifyDeliveryCase } from "./verify.mjs";
 import { evaluateReleaseGate } from "./release-gate.mjs";
+import { acceptProjectChanges, createImplementationHandoff, previewProjectChanges } from "./agent-runner.mjs";
+import { createHumanAssistance } from "./human-assistance.mjs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -18,6 +20,7 @@ function usage() {
   node src/cli.mjs init --project-root <root> [--force] [--output <file>]
   node src/cli.mjs case-init --project-root <root> --work-item-id <id> --project <id> --repository <repo> --target-sha <sha> --branch <branch>
   node src/cli.mjs desktop-goal --project-root <root> --case-id <id> --goal-id <id> --purpose <text> [--write]
+  node src/cli.mjs assist --project-root <root> [--stage <stage>] [--generated-files <json>] [--allowed-path <path>] [--write]
   node src/cli.mjs plan --project-root <root> [--config <file>]
   node src/cli.mjs run --project-root <root> [--config <file>] [--case <dir>] [--execute]
   node src/cli.mjs resume --project-root <root> --case <dir> [--config <file>]
@@ -98,6 +101,32 @@ async function main(argv) {
     else console.log(payload);
     return;
   }
+  if (command === "assist") {
+    const root = option(args, "--project-root", process.cwd());
+    const stage = option(args, "--stage", "implementation");
+    const discovery = await discoverProject(root);
+    const allowedPaths = options(args, "--allowed-path");
+    const handoff = createImplementationHandoff({ projectRoot: root, stage, discovery, allowedPaths: allowedPaths.length > 0 ? allowedPaths : [".autotest", ".github/workflows", "scripts", "test", "tests", "package.json"], successCondition: option(args, "--success-condition") ?? undefined });
+    const generatedRaw = option(args, "--generated-files");
+    if (!generatedRaw) {
+      const result = { status: "needs_human", reason: "implementation_input_required", handoff, humanAssistance: createHumanAssistance({ stage, reason: "implementation_input_required", question: "请提供目标项目要创建或修改的文件内容，先预览 diff，再显式授权写入。", choices: ["提供 generated_files", "补充现有项目入口", "切换到隔离 worktree"], details: { handoff } }) };
+      console.log(JSON.stringify(result, null, 2));
+      process.exitCode = 2;
+      return;
+    }
+    let generatedFiles;
+    try { generatedFiles = JSON.parse(generatedRaw); } catch { throw new Error("--generated-files_must_be_json_object"); }
+    const preview = await previewProjectChanges({ projectRoot: root, generatedFiles, allowedPaths: handoff.allowedPaths });
+    if (!args.includes("--write")) {
+      const result = { status: "needs_human", reason: "write_authorization_required", handoff, preview, humanAssistance: createHumanAssistance({ stage, reason: "write_authorization_required", question: "已生成目标项目 diff。是否授权写入这些路径？", choices: ["授权写入并重新发现", "修改 generated_files", "取消本次写入"], details: { preview } }) };
+      console.log(JSON.stringify(result, null, 2));
+      process.exitCode = 2;
+      return;
+    }
+    const result = await acceptProjectChanges({ projectRoot: root, generatedFiles, allowedPaths: handoff.allowedPaths, allowProjectEdits: true });
+    console.log(JSON.stringify({ ...result, status: "passed", handoff }, null, 2));
+    return;
+  }
   if (command === "case-init") {
     const root = option(args, "--project-root", process.cwd());
     const required = ["--work-item-id", "--project", "--repository", "--target-sha", "--branch"];
@@ -128,7 +157,9 @@ async function main(argv) {
     const root = option(args, "--project-root", process.cwd());
     const config = option(args, "--config", projectConfigPath(root));
     const discovery = await discoverProject(root);
-    const definition = await loadDefinition(config);
+    let definition = await loadDefinition(config);
+    const commitPaths = options(args, "--commit-path");
+    if (commitPaths.length > 0) definition = { ...definition, release: { ...definition.release, commit: { ...definition.release.commit, paths: commitPaths } } };
     const caseDir = option(args, "--case");
     if (command === "resume" && !caseDir) throw new Error("resume_--case_required");
     const execute = command === "resume" || (command === "run" && args.includes("--execute"));
@@ -137,7 +168,7 @@ async function main(argv) {
     const output = option(args, "--output");
     if (output) await writeFile(output, `${payload}\n`, "utf8");
     else console.log(payload);
-    if (["failed", "blocked"].includes(result.status)) process.exitCode = 2;
+    if (["failed", "blocked", "needs_human"].includes(result.status)) process.exitCode = 2;
     return;
   }
   usage();

@@ -4,6 +4,8 @@ import { join, relative } from "node:path";
 import { promisify } from "node:util";
 import { verifyPullRequestChecks } from "./github.mjs";
 import { verifyReleaseArtifacts } from "./release-verifier.mjs";
+import { createHumanAssistance } from "./human-assistance.mjs";
+import { classifyWorktreeChanges, parsePorcelainStatus } from "./worktree.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -99,11 +101,31 @@ async function commitChanges(action, context) {
   const status = await context.commandRunner("git", ["status", "--porcelain", "--untracked-files=all"], context);
   if (status.status !== "passed") return status;
   if (!status.stdout.trim()) return { status: "passed", reason: "no_changes_to_commit" };
-  if (!Array.isArray(action.paths) || action.paths.length === 0) return { status: "manual_required", reason: "commit_paths_required_for_uncommitted_changes" };
+  if (!Array.isArray(action.paths) || action.paths.length === 0) return createHumanAssistance({
+    stage: "commit",
+    reason: "commit_paths_required_for_uncommitted_changes",
+    question: "检测到未提交文件，但没有允许提交的路径。请提供 commit paths 或切换到隔离 worktree。",
+    choices: ["提供允许提交的路径", "切换到隔离 worktree", "保留变更稍后继续"],
+  });
+  const worktree = classifyWorktreeChanges({ dirtyEntries: parsePorcelainStatus(status.stdout), allowedPaths: action.paths });
+  if (worktree.status === "needs_human") {
+    return createHumanAssistance({
+      stage: "commit",
+      reason: "unresolved_worktree_changes",
+      question: "工作区包含未授权变更。请选择要提交的路径，或先在隔离 worktree 中继续。",
+      choices: ["补充允许提交的路径", "切换到隔离 worktree", "保留当前工作区并稍后继续"],
+      details: worktree,
+    });
+  }
   const add = await context.commandRunner("git", ["add", "--", ...action.paths], context);
   if (add.status !== "passed") return add;
   const staged = await context.commandRunner("git", ["diff", "--cached", "--name-only"], context);
-  if (staged.status !== "passed" || !staged.stdout.trim()) return { status: "manual_required", reason: "commit_paths_did_not_stage_changes" };
+  if (staged.status !== "passed" || !staged.stdout.trim()) return createHumanAssistance({
+    stage: "commit",
+    reason: "commit_paths_did_not_stage_changes",
+    question: "允许提交的路径没有产生可提交变更，请检查 diff 后重新选择路径。",
+    choices: ["重新选择路径", "保留变更稍后继续"],
+  });
   return context.commandRunner("git", ["commit", "-m", action.message], context);
 }
 

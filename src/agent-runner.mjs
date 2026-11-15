@@ -57,6 +57,24 @@ export async function acceptProjectChanges(options) {
   return { ...result, discovery: await discoverProject(options.projectRoot) };
 }
 
+export function createImplementationHandoff({ projectRoot, stage = "implementation", discovery = {}, allowedPaths = [], successCondition, requiredEvidence = ["diff", "method-result"] } = {}) {
+  return {
+    schemaVersion: 1,
+    projectRoot: resolve(projectRoot),
+    stage,
+    projectId: discovery.projectId ?? null,
+    ecosystem: discovery.ecosystems?.[0] ?? "unknown",
+    detectedEcosystems: discovery.ecosystems ?? [],
+    missingCapabilities: discovery.missingCapabilities ?? [],
+    candidateScripts: discovery.scriptCandidates ?? {},
+    candidateWorkflows: discovery.workflows ?? [],
+    allowedPaths,
+    successCondition: successCondition ?? `create the project-owned ${stage} entry and make it pass`,
+    requiredEvidence,
+    instructions: "Create or modify files inside allowedPaths, preview the diff, rerun discovery, and execute the selected project-owned method.",
+  };
+}
+
 export async function createProjectMethod({ projectRoot, stage, taskArtifact, allowedPaths = [".autotest"], allowProjectEdits = false }) {
   if (typeof stage !== "string" || stage.trim() === "") fail("stage_required");
   const file = `.autotest/tasks/${stage.trim()}.json`;

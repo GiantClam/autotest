@@ -1,7 +1,7 @@
 # Add the generic project lifecycle tools to a DeepSeek Harness profile.
 - insert:
-    - id: autotest-project-lifecycle
-      name: '@giantclam/dsh-autotest'
+    - id: autosoftwarefactory-project-lifecycle
+      name: '@giantclam/dsh-autosoftwarefactory'
       config:
-        # Set AUTOTEST_ROOT when the plugin is installed outside this checkout.
-        autotestRoot: !!js process.env.AUTOTEST_ROOT
+        # Set AUTOSOFTWAREFACTORY_ROOT when the plugin is installed outside this checkout.
+        autosoftwarefactoryRoot: !!js process.env.AUTOSOFTWAREFACTORY_ROOT

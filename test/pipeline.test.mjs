@@ -32,8 +32,10 @@ test("plans smoke before merge, tag, and publish", () => {
 
 test("stops before release when implementation is incomplete", async () => {
   const result = await executePipeline({ ...definition, methods: { ...definition.methods, implementation: { kind: "manual", completed: false } } }, discovery, { execute: true });
-  assert.equal(result.status, "blocked");
+  assert.equal(result.status, "needs_human");
   assert.equal(result.stoppedAt, "implementation");
+  assert.equal(result.humanAssistance.reason, "project_method_requires_agent_assistance");
+  assert.ok(result.results[1].humanAssistance.details.handoff);
 });
 
 test("plan mode reports every stage without executing or stopping", async () => {

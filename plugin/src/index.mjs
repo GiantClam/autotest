@@ -8,7 +8,7 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 const PACKAGE_ROOT = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 
-export const name = "autotest-project-lifecycle";
+export const name = "autosoftwarefactory-project-lifecycle";
 export const inject = ["tools"];
 
 const RESULT_SCHEMA = {
@@ -64,7 +64,7 @@ function redact(value) {
 }
 
 async function runCli(config, projectRoot, command, args, signal) {
-  const autotestRoot = resolve(config.autotestRoot ?? PACKAGE_ROOT);
+  const autotestRoot = resolve(config.autosoftwarefactoryRoot ?? config.autotestRoot ?? process.env.AUTOSOFTWAREFACTORY_ROOT ?? process.env.AUTOTEST_ROOT ?? PACKAGE_ROOT);
   const cliPath = join(autotestRoot, "src", "cli.mjs");
   await ensureDirectory(projectRoot);
   const fullArgs = [cliPath, command, "--project-root", projectRoot, ...args];
@@ -154,6 +154,24 @@ export function apply(ctx, config = {}) {
     return runCli(config, projectRoot, "desktop-goal", commandArgs);
   });
 
+  register(ctx, config, "autosoftwarefactory_project_assist", "Create an implementation handoff, preview target-project changes, and write them only after the Agent explicitly passes write=true. The core re-discovers the project after accepted writes.", objectParameters({
+    project_root: { type: "string", description: "Absolute path to the target Git project." },
+    stage: { type: "string", description: "Lifecycle stage to provision. Defaults to implementation." },
+    generated_files: { type: "object", description: "Relative target-project paths mapped to file contents." },
+    allowed_paths: { type: "array", items: { type: "string" }, description: "Target paths the Agent authorizes for this change." },
+    success_condition: { type: "string", description: "Project-owned condition that must pass after re-discovery." },
+    write: { type: "boolean", description: "Persist the reviewed files. Defaults to false and returns needs_human with a diff preview." },
+  }, ["project_root"]), async (args, exec) => {
+    const projectRoot = requiredPath(args.project_root, "project_root");
+    const commandArgs = [];
+    if (args.stage !== undefined) commandArgs.push("--stage", args.stage);
+    for (const path of args.allowed_paths ?? []) commandArgs.push("--allowed-path", path);
+    if (args.success_condition !== undefined) commandArgs.push("--success-condition", args.success_condition);
+    if (args.generated_files !== undefined) commandArgs.push("--generated-files", JSON.stringify(args.generated_files));
+    if (args.write === true) commandArgs.push("--write");
+    return runCli(config, projectRoot, "assist", commandArgs, exec.signal);
+  });
+
   register(ctx, config, "autotest_project_plan", "Plan the complete discover, implement, verify, build, package, smoke, commit, push, merge, tag, and publish lifecycle for a target project without executing it.", objectParameters({
     project_root: { type: "string", description: "Absolute path to the target Git project." },
     config_path: { type: "string", description: "Optional project definition path; defaults to .autotest/project.json." },
@@ -169,9 +187,12 @@ export function apply(ctx, config = {}) {
     execute: { type: "boolean", description: "Run project methods and release actions. Defaults to false (plan only)." },
     case_dir: { type: "string", description: "Optional Delivery Case directory for durable stage events and evidence." },
     resume: { type: "boolean", description: "Resume from passed case stages without repeating their side effects." },
+    commit_paths: { type: "array", items: { type: "string" }, description: "Explicit paths allowed for the commit stage. Unlisted dirty paths produce needs_human." },
   }, ["project_root"]), async (args, exec) => {
     const projectRoot = requiredPath(args.project_root, "project_root");
     const configArgs = args.config_path === undefined ? [] : ["--config", requiredPath(args.config_path, "config_path")];
-    return runCli(config, projectRoot, args.resume === true ? "resume" : "run", [...configArgs, ...(args.case_dir === undefined ? [] : ["--case", requiredPath(args.case_dir, "case_dir")]), ...(args.execute === true || args.resume === true ? ["--execute"] : [])], exec.signal);
+    const commandArgs = [...configArgs, ...(args.case_dir === undefined ? [] : ["--case", requiredPath(args.case_dir, "case_dir")]), ...(args.execute === true || args.resume === true ? ["--execute"] : [])];
+    for (const path of args.commit_paths ?? []) commandArgs.push("--commit-path", path);
+    return runCli(config, projectRoot, args.resume === true ? "resume" : "run", commandArgs, exec.signal);
   });
 }

@@ -1,7 +1,7 @@
 {
-  "name": "@giantclam/dsh-autotest",
+  "name": "@giantclam/dsh-autosoftwarefactory",
   "version": "0.1.0",
-  "description": "DeepSeek Harness tools for the generic autotest project lifecycle",
+  "description": "DeepSeek Harness tools for the generic autosoftwarefactory project lifecycle",
   "private": true,
   "type": "module",
   "main": "src/index.mjs",

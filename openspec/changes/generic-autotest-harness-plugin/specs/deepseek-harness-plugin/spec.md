@@ -6,11 +6,11 @@ This capability exposes the generic project lifecycle through a local DeepSeek H
 
 ### Requirement: The local plugin exposes the generic lifecycle
 
-The plugin SHALL load through a DeepSeek Harness profile patch and register these model-facing tools: `autotest_project_discover`, `autotest_project_init`, `autotest_desktop_goal_register`, `autotest_project_plan`, and `autotest_project_run`.
+The plugin SHALL load through a DeepSeek Harness profile patch and register these model-facing tools: `autotest_project_discover`, `autotest_project_init`, `autotest_desktop_goal_register`, `autosoftwarefactory_project_assist`, `autotest_project_plan`, and `autotest_project_run`.
 
 #### Scenario: Load the plugin in a Harness profile
 - **WHEN** the plugin package is installed from the local source path and its profile patch is applied
-- **THEN** all five tools register without requiring a project-specific adapter or a direct JEV API connection
+- **THEN** all six tools register without requiring a project-specific adapter or a direct JEV API connection
 
 #### Scenario: Load the plugin without a model credential
 - **WHEN** Harness boots the profile without `DEEPSEEK_API_KEY`
@@ -47,6 +47,18 @@ The plugin SHALL return machine-readable status values and SHALL redact API-key,
 #### Scenario: Project command emits a credential-like value
 - **WHEN** a delegated command fails and its output contains a credential-like value
 - **THEN** the returned tool result contains a redacted value and preserves the failure status
+
+### Requirement: Agent assistance is explicit and reviewable
+
+The plugin SHALL return `needs_human` with a handoff and diff preview when a project method is missing, write authorization is absent, or dirty paths fall outside the commit allowlist. The assist tool SHALL write target-project files only with `write: true` and SHALL re-run discovery after accepted writes.
+
+#### Scenario: Missing implementation entry
+- **WHEN** a target project has no implementation method
+- **THEN** the run result includes the detected ecosystem, allowed paths, success condition, required evidence, and the next assist action
+
+#### Scenario: Unresolved dirty paths before commit
+- **WHEN** the worktree contains paths outside the configured commit allowlist
+- **THEN** the pipeline returns `needs_human` with the unresolved paths and does not stage or commit them
 
 #### Scenario: JEV is needed
 - **WHEN** a registered desktop goal is required during a project case

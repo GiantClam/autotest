@@ -19,7 +19,7 @@
 ## 3. Finish the local DeepSeek Harness plugin
 
 - [x] 3.1 Add the local Cordis package, profile patch, and installation documentation.
-- [x] 3.2 Register `autotest_project_discover`, `autotest_project_init`, `autotest_desktop_goal_register`, `autotest_project_plan`, and `autotest_project_run`.
+- [x] 3.2 Register `autotest_project_discover`, `autotest_project_init`, `autotest_desktop_goal_register`, `autosoftwarefactory_project_assist`, `autotest_project_plan`, and `autotest_project_run`.
 - [x] 3.3 Keep write and execute operations explicit, structured, redacted, and independent of CoworkAny.
 - [x] 3.4 Validate local profile registration and keyless boot; treat a missing model credential as a provider gate rather than a plugin registration failure.
 - [x] 3.5 Add a repeatable keyless Harness fixture test that loads the plugin, invokes each tool with a fake project, and checks tool output schemas.
@@ -29,7 +29,7 @@
 ## 4. Support generic project creation and modification
 
 - [x] 4.1 Add an implementation handoff artifact that describes the missing stage, detected ecosystem, allowed target paths, success condition, and required evidence.
-- [x] 4.2 Add an Agent runner boundary that can create or modify target-project scripts, tests, configuration, and workflows only after explicit project write authorization.
+- [x] 4.2 Add an Agent runner boundary that can create or modify target-project scripts, tests, configuration, and workflows only after explicit project write authorization, with a human assistance response when authorization or path scope is missing.
 - [x] 4.3 Produce a diff preview before source/script/test/workflow writes and re-run discovery after every accepted change.
 - [x] 4.4 Add standard-family fixtures for Node, Python, Rust, Go, Make, and JVM projects; unknown families must produce a named blocked capability.
 

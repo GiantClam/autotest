@@ -3,6 +3,8 @@ import { discoverProject } from "./discovery.mjs";
 import { executeProjectMethod } from "./method-runner.mjs";
 import { executeReleaseAction } from "./release.mjs";
 import { appendEvent, loadResumeState } from "./artifacts.mjs";
+import { createImplementationHandoff } from "./agent-runner.mjs";
+import { createHumanAssistance, persistHumanAssistance } from "./human-assistance.mjs";
 
 const PRE_RELEASE_PROJECT_STAGES = ["implementation", "verify", "build", "package", "smoke"];
 const POST_RELEASE_PROJECT_STAGES = [];
@@ -78,6 +80,27 @@ async function recordStage(caseDir, stage, status, payload, sequence) {
   });
 }
 
+function assistanceForStage(stage, discovery, definition) {
+  const handoff = stage === "implementation"
+    ? createImplementationHandoff({
+      projectRoot: discovery.projectRoot,
+      stage,
+      discovery,
+      allowedPaths: [".autotest", ".github/workflows", "scripts", "test", "tests", "package.json"],
+      requiredEvidence: ["diff", "method-result"],
+    })
+    : null;
+  return createHumanAssistance({
+    stage,
+    reason: "project_method_requires_agent_assistance",
+    question: stage === "implementation"
+      ? "implementation 入口缺失。请调用 project assist 创建目标项目方法，预览并授权写入后重新运行。"
+      : `${stage} 方法需要人工或 Agent 处理，请补充目标项目入口和证据后重新运行。`,
+    choices: ["调用项目 assist 创建入口", "补充现有项目方法", "切换到隔离 worktree"],
+    details: { project: definition.project, handoff },
+  });
+}
+
 export async function executePipeline(rawDefinition, discovery, { execute = false, methodExecutor = executeProjectMethod, releaseExecutor = executeReleaseAction, releaseGate, playwrightRunner, caseDir = null, resume = false } = {}) {
   const plan = createPipelinePlan(rawDefinition, discovery);
   if (!execute) return { status: "planned", results: plan.stages, plan };
@@ -104,10 +127,12 @@ export async function executePipeline(rawDefinition, discovery, { execute = fals
       continue;
     }
     if (stage.status === "manual_required") {
-      const blocked = { ...stage, status: "manual_required", reason: stage.id === "tag" ? "project_version_or_explicit_tag_required" : "project_method_required" };
+      const blocked = { ...stage, status: "needs_human", reason: stage.id === "tag" ? "project_version_or_explicit_tag_required" : "project_method_required", humanAssistance: assistanceForStage(stage.id, discovery, plan.definition) };
       results.push(blocked);
-      await recordStage(caseDir, stage.id, "blocked", { result: blocked, reason: blocked.reason, classification: "human-required", resumable: true }, sequence++);
-      return { status: "blocked", stoppedAt: stage.id, results, plan };
+      const assistance = await persistHumanAssistance(caseDir, blocked.humanAssistance);
+      blocked.humanAssistance = assistance;
+      await recordStage(caseDir, stage.id, "needs_human", { result: blocked, reason: blocked.reason, classification: "human-required", resumable: true }, sequence++);
+      return { status: "needs_human", stoppedAt: stage.id, results, plan, humanAssistance: assistance };
     }
     if (PROJECT_STAGES.includes(stage.id)) {
       const methods = plan.definition.methods[stage.id];
@@ -122,10 +147,13 @@ export async function executePipeline(rawDefinition, discovery, { execute = fals
         result = { ...result, attempts };
         methodResults.push({ method: method.id, ...result });
         if (!["passed", "planned"].includes(result.status) && method.required) {
-          const failed = { ...stage, status: result.status, methodResults, classification: result.classification };
+          const needsHuman = result.status === "manual_required" || result.status === "needs_human";
+          const failed = { ...stage, status: needsHuman ? "needs_human" : result.status, methodResults, classification: result.classification, ...(needsHuman ? { humanAssistance: assistanceForStage(stage.id, discovery, plan.definition) } : {}) };
           results.push(failed);
-          await recordStage(caseDir, stage.id, result.status === "manual_required" ? "blocked" : result.status, { result: failed, reason: result.reason, classification: result.classification, resumable: result.status === "manual_required" }, sequence++);
-          return { status: result.status === "manual_required" ? "blocked" : "failed", stoppedAt: stage.id, results, plan };
+          const assistance = needsHuman ? await persistHumanAssistance(caseDir, failed.humanAssistance) : null;
+          if (assistance) failed.humanAssistance = assistance;
+          await recordStage(caseDir, stage.id, needsHuman ? "needs_human" : result.status, { result: failed, reason: result.reason, classification: result.classification, resumable: needsHuman }, sequence++);
+          return { status: needsHuman ? "needs_human" : "failed", stoppedAt: stage.id, results, plan, ...(assistance ? { humanAssistance: assistance } : {}) };
         }
       }
       const completed = { ...stage, status: "passed", methodResults };
@@ -158,8 +186,11 @@ export async function executePipeline(rawDefinition, discovery, { execute = fals
       if (stage.id === "merge" && result.mergeCommitSha) releaseContext.mergeCommitSha = result.mergeCommitSha;
       await recordStage(caseDir, stage.id, "passed", { result }, sequence++);
     } else {
-      await recordStage(caseDir, stage.id, result.status === "manual_required" ? "blocked" : result.status, { result, reason: result.reason, classification: result.classification, resumable: result.status === "manual_required" }, sequence++);
-      return { status: result.status === "manual_required" ? "blocked" : "failed", stoppedAt: stage.id, results, plan };
+      const needsHuman = result.status === "manual_required" || result.status === "needs_human";
+      const assistance = needsHuman ? await persistHumanAssistance(caseDir, result.humanAssistance ?? createHumanAssistance({ stage: stage.id, reason: result.reason ?? "release_action_requires_human", question: "发布动作需要人工确认，请检查返回的变更和发布范围。", details: result })) : null;
+      if (needsHuman) results.at(-1).humanAssistance = assistance;
+      await recordStage(caseDir, stage.id, needsHuman ? "needs_human" : result.status, { result: results.at(-1), reason: result.reason, classification: result.classification, resumable: needsHuman }, sequence++);
+      return { status: needsHuman ? "needs_human" : "failed", stoppedAt: stage.id, results, plan, ...(assistance ? { humanAssistance: assistance } : {}) };
     }
   }
   return { status: "passed", results, plan };
