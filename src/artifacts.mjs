@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { join, relative, resolve, sep } from "node:path";
 
 const SECRET_PATTERN = /apikey_[A-Za-z0-9_-]+|(?:token|secret|password|key)=[^\s&]+/giu;
+const RESUMABLE_RELEASE_STAGES = new Set(["commit", "push", "merge", "tag", "publish"]);
 
 export function redact(value) {
   return String(value).replace(SECRET_PATTERN, (match) => match.startsWith("apikey_") ? "[REDACTED_API_KEY]" : `${match.split("=", 1)[0]}=[REDACTED]`);
@@ -84,5 +85,6 @@ export async function loadResumeState(caseDir) {
   const events = await loadEvents(caseDir);
   const last = events.at(-1) ?? null;
   const lastPassed = [...events].reverse().find((event) => event.status === "passed") ?? null;
-  return { events, lastEvent: last, lastPassedEvent: lastPassed, resumable: last?.status !== "failed" || last?.resumable === true };
+  const resumable = last?.status !== "failed" || last?.resumable === true || RESUMABLE_RELEASE_STAGES.has(last?.stage);
+  return { events, lastEvent: last, lastPassedEvent: lastPassed, resumable };
 }

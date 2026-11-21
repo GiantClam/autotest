@@ -29,6 +29,8 @@ node src/cli.mjs release-gate
 
 Each executed Delivery Case records stage events under `.autotest/cases/<work-item-id>/events.jsonl`. Evidence is hashed in `evidence-manifest.json`; `resume` skips passed stages, and `verify` fails closed on missing evidence or target SHA drift. TypeSafe/Jev is an optional bounded decision provider: set `JEV_API_KEY` or `TYPESAFE_API_KEY` only for an explicitly registered Agent Desktop operation. The autosoftwarefactory plugin does not call JEV during discovery or planning.
 
+Release action failures remain resumable, including cases recorded by older versions. After resolving a network failure, commit scope, or PR conflict, use `resume` to retry the unfinished release step without repeating passed project methods. Merge waits for pending GitHub checks and configured `requiredChecks`; a missing or unfinished check blocks merge and can be retried once the check completes.
+
 The generic engine deliberately does not contain CoworkAny, AIMarketing, AutoViralVid, or Image Editor commands. `init` creates a project-owned definition from discovered entries; if a required entry is missing, the handoff tells the Agent how to create it in the target project and re-run discovery.
 
 ## DeepSeek Harness plugin

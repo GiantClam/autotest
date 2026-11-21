@@ -35,3 +35,45 @@ test("retries a failed project method only within its declared retry limit", asy
   assert.equal(result.status, "passed");
   assert.equal(attempts, 2);
 });
+
+test("keeps a failed remote release action resumable", async () => {
+  const root = await mkdtemp(join(tmpdir(), "autotest-release-resume-"));
+  const releaseDefinition = {
+    ...definition,
+    project: { ...definition.project, repository: "owner/fixture", defaultBranch: "main" },
+    release: {
+      commit: { enabled: true, message: "test release", paths: ["."] },
+      push: { enabled: true, remote: "origin" },
+      merge: { enabled: true, strategy: "squash", deleteBranch: false, createIfMissing: false },
+      tag: { enabled: true, prefix: "v", versionSource: "explicit", version: "1.0.0" },
+      publish: { enabled: false },
+    },
+  };
+  const firstCalls = [];
+  const first = await executePipeline(releaseDefinition, discovery, {
+    execute: true,
+    caseDir: root,
+    methodExecutor: async () => ({ status: "passed" }),
+    releaseExecutor: async (action) => {
+      firstCalls.push(action.stage);
+      return action.stage === "merge" ? { status: "failed", error: "merge_conflict" } : { status: "passed" };
+    },
+  });
+  assert.equal(first.status, "failed");
+  assert.equal(first.stoppedAt, "merge");
+
+  const resumedCalls = [];
+  const resumed = await executePipeline(releaseDefinition, discovery, {
+    execute: true,
+    caseDir: root,
+    resume: true,
+    methodExecutor: async () => assert.fail("passed project methods must not rerun"),
+    releaseExecutor: async (action) => {
+      resumedCalls.push(action.stage);
+      return action.stage === "merge" ? { status: "passed", mergeCommitSha: "merge-sha" } : { status: "passed" };
+    },
+  });
+  assert.equal(resumed.status, "passed");
+  assert.deepEqual(firstCalls, ["commit", "push", "merge"]);
+  assert.deepEqual(resumedCalls, ["merge", "tag"]);
+});

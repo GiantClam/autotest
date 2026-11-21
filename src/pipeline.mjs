@@ -101,6 +101,16 @@ function assistanceForStage(stage, discovery, definition) {
   });
 }
 
+function releaseFailureIsResumable(action, result) {
+  if (result.status === "manual_required" || result.status === "needs_human") return true;
+  if (result.status !== "failed") return false;
+  // Release actions interact with mutable remote state. A failed push, merge,
+  // tag, or upload may become valid after the operator fixes the remote state
+  // (for example, resolving a PR conflict or waiting for checks). Keep the
+  // case resumable so the next explicit resume re-evaluates the current state.
+  return ["git-commit", "git-push", "github-pr-merge", "git-tag", "github-release"].includes(action.kind);
+}
+
 export async function executePipeline(rawDefinition, discovery, { execute = false, methodExecutor = executeProjectMethod, releaseExecutor = executeReleaseAction, releaseGate, playwrightRunner, caseDir = null, resume = false } = {}) {
   const plan = createPipelinePlan(rawDefinition, discovery);
   if (!execute) return { status: "planned", results: plan.stages, plan };
@@ -189,8 +199,8 @@ export async function executePipeline(rawDefinition, discovery, { execute = fals
       const needsHuman = result.status === "manual_required" || result.status === "needs_human";
       const assistance = needsHuman ? await persistHumanAssistance(caseDir, result.humanAssistance ?? createHumanAssistance({ stage: stage.id, reason: result.reason ?? "release_action_requires_human", question: "发布动作需要人工确认，请检查返回的变更和发布范围。", details: result })) : null;
       if (needsHuman) results.at(-1).humanAssistance = assistance;
-      await recordStage(caseDir, stage.id, needsHuman ? "needs_human" : result.status, { result: results.at(-1), reason: result.reason, classification: result.classification, resumable: needsHuman }, sequence++);
-      return { status: needsHuman ? "needs_human" : "failed", stoppedAt: stage.id, results, plan, ...(assistance ? { humanAssistance: assistance } : {}) };
+      await recordStage(caseDir, stage.id, needsHuman ? "needs_human" : result.status, { result: results.at(-1), reason: result.reason, classification: result.classification, resumable: releaseFailureIsResumable(action, result) }, sequence++);
+      return { status: needsHuman ? "needs_human" : result.status === "blocked" ? "blocked" : "failed", stoppedAt: stage.id, results, plan, ...(assistance ? { humanAssistance: assistance } : {}) };
     }
   }
   return { status: "passed", results, plan };

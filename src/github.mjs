@@ -19,6 +19,8 @@ export async function verifyPullRequestChecks({ repository, pullRequest, expecte
   const names = new Set(checks.map((check) => check.name ?? check.context));
   const missing = requiredChecks.filter((name) => !names.has(name));
   if (missing.length > 0) return { status: "blocked", reason: "required_check_missing", checks: missing };
+  const pending = checks.filter((check) => !["SUCCESS", "NEUTRAL", "SKIPPED"].includes(String(check.conclusion || check.state || "").toUpperCase()));
+  if (pending.length > 0) return { status: "blocked", reason: "pull_request_checks_pending", checks: pending.map((check) => check.name ?? check.context ?? "unknown") };
   return { status: "passed", headSha: data.headRefOid, checks };
 }
 

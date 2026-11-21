@@ -25,6 +25,13 @@ test("appends events, redacts secrets, and resumes from the last passed event", 
   await assert.rejects(appendEvent(root, { eventId: "discover-1", stage: "discover", status: "passed" }), /artifact_invalid:duplicate_event_id/);
 });
 
+test("keeps legacy failed release events resumable", async () => {
+  const root = await mkdtemp(join(tmpdir(), "autotest-release-event-"));
+  await appendEvent(root, { eventId: "merge-1", stage: "merge", status: "failed", error: "merge_conflict" });
+  const state = await loadResumeState(root);
+  assert.equal(state.resumable, true);
+});
+
 test("creates an evidence directory when needed", async () => {
   const root = await mkdtemp(join(tmpdir(), "autotest-artifacts-dir-"));
   const nested = join(root, "nested");
